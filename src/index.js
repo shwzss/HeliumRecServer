@@ -8,16 +8,28 @@ const logger = require('./logger');
 const protocol = require('./protocol');
 const auth = require('./auth');
 const storage = require('./storage');
-const admin = require('./admin');
 
 const PORT = process.env.PORT || 5055;
-const ADMIN_PORT = process.env.ADMIN_PORT || 5056;
 
 (async () => {
   await storage.init();
 
   // Start WebSocket server on its own HTTP server so we can inspect req.url
-  const server = http.createServer();
+  const server = http.createServer((req, res) => {
+    // Provide a minimal informational page for HTTP GETs so browsers don't see "Cannot GET /"
+    if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(`<html><body>
+        <h1>HeliumRecServer</h1>
+        <p>This port is a WebSocket endpoint. Connect using a WebSocket client.</p>
+        <p>Server listens on ws://0.0.0.0:${PORT}</p>
+      </body></html>`);
+      return;
+    }
+    // leave other requests to return 404
+    res.writeHead(404); res.end('Not Found');
+  });
+
   const wss = new WebSocket.Server({ noServer: true });
 
   const connections = new Map(); // key -> { ws, user }
@@ -79,7 +91,4 @@ const ADMIN_PORT = process.env.ADMIN_PORT || 5056;
   });
 
   server.listen(PORT, () => logger.info(`HeliumRecServer WebSocket listening on ws://0.0.0.0:${PORT}`));
-
-  // Start admin console (HTTP) bound to ADMIN_PORT
-  admin.start({ port: ADMIN_PORT, getConnections: () => connections });
 })();
